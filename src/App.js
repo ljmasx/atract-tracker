@@ -1,26 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertCircle, Download, Plus, Eye, CheckCircle, XCircle, Filter, Calendar, User } from 'lucide-react';
 import { supabase } from './supabaseClient';
-
-// Données initiales
-const INITIAL_DATA = {
-  generations: [
-    { id: 1, name: 'ATRACT-C' },
-    { id: 2, name: 'ATRACT-S' }
-  ],
-  chefs: [
-    { id: 1, name: 'Mathieu PIOCHE', lastName: 'PIOCHE', email: 'mathieu.pioche@example.com' },
-    { id: 2, name: 'Jérôme RIVORY', lastName: 'RIVORY', email: 'jerome.rivory@example.com' },
-    { id: 3, name: 'Jérémie JACQUES', lastName: 'JACQUES', email: 'jeremie.jacques@example.com' },
-    { id: 4, name: 'Fabien PINARD', lastName: 'PINARD', email: 'fabien.pinard@example.com' },
-    { id: 5, name: 'Timothée WALLENHORST', lastName: 'WALLENHORST', email: 'timothee.wallenhorst@example.com' },
-    { id: 6, name: 'Romain LEGROS', lastName: 'LEGROS', email: 'romain.legros@example.com' },
-    { id: 7, name: 'Jean GRIMALDI', lastName: 'GRIMALDI', email: 'jean.grimaldi@example.com' }
-  ],
-  campaigns: [],
-  assignments: [],
-  tests: []
-};
 
 // Alerte rouge
 const RedAlert = () => (
@@ -55,8 +35,9 @@ const NewCampaignModal = ({ onClose, onCreateCampaign, generations }) => {
     status: 'Actif',
     inventory: { 1: 0, 2: 0 }
   });
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name.trim()) {
       window.alert('Le nom est obligatoire');
       return;
@@ -66,7 +47,10 @@ const NewCampaignModal = ({ onClose, onCreateCampaign, generations }) => {
       window.alert('Entrez au moins 1 dispositif');
       return;
     }
-    onCreateCampaign(formData);
+    
+    setIsLoading(true);
+    await onCreateCampaign(formData);
+    setIsLoading(false);
   };
 
   return (
@@ -162,14 +146,16 @@ const NewCampaignModal = ({ onClose, onCreateCampaign, generations }) => {
             <button
               onClick={onClose}
               className="flex-1 bg-gray-300 hover:bg-gray-400 px-6 py-4 rounded-xl font-bold text-lg"
+              disabled={isLoading}
             >
               Annuler
             </button>
             <button
               onClick={handleSubmit}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-bold text-lg"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-bold text-lg disabled:opacity-50"
+              disabled={isLoading}
             >
-              Créer la campagne
+              {isLoading ? 'Création...' : 'Créer la campagne'}
             </button>
           </div>
         </div>
@@ -178,10 +164,10 @@ const NewCampaignModal = ({ onClose, onCreateCampaign, generations }) => {
   );
 };
 
-// Vue Chef - Dashboard complet - VERSION SIMPLIFIÉE
-const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAddTest, onConfirmReception }) => {
+// Vue Chef - Dashboard complet
+const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAddTest, onConfirmReception, onRefresh }) => {
   const [selectedCampaign, setSelectedCampaign] = useState(null);
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'deviceSelection', 'testForm'
+  const [currentView, setCurrentView] = useState('dashboard');
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [testForm, setTestForm] = useState({
     testDate: new Date().toISOString().split('T')[0],
@@ -197,38 +183,34 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
   });
 
   const chefCampaigns = campaigns.filter(campaign => 
-    assignments.some(a => a.campaignId === campaign.id && a.chefId === chef.id)
+    assignments.some(a => a.campaign_id === campaign.id && a.chef_id === chef.id)
   );
 
   const chefAssignments = selectedCampaign
-    ? assignments.filter(a => a.campaignId === selectedCampaign.id && a.chefId === chef.id)
+    ? assignments.filter(a => a.campaign_id === selectedCampaign.id && a.chef_id === chef.id)
     : [];
 
   const getAssignmentTests = (assignmentId) => {
-    return tests.filter(t => t.assignmentId === assignmentId);
+    return tests.filter(t => t.assignment_id === assignmentId);
   };
 
-  const handleSubmitTest = () => {
+  const handleSubmitTest = async () => {
     if (testForm.problem && !testForm.problemDesc.trim()) {
       window.alert('La description du problème est obligatoire');
       return;
     }
     
-    const newTest = {
-      id: Date.now(),
-      assignmentId: selectedAssignment.id,
-      testDate: testForm.testDate,
+    await onAddTest({
+      assignment_id: selectedAssignment.id,
+      test_date: testForm.testDate,
       context: testForm.context === 'Autre' ? testForm.contextOther : testForm.context,
       clip: testForm.clip === 'Autre' ? testForm.clipOther : testForm.clip,
-      easeScore: testForm.easeScore,
-      efficacyScore: testForm.efficacyScore,
+      ease_score: testForm.easeScore,
+      efficacy_score: testForm.efficacyScore,
       problem: testForm.problem,
-      problemDesc: testForm.problemDesc,
-      comments: testForm.comments,
-      mediaUrls: []
-    };
-    
-    onAddTest(newTest);
+      problem_desc: testForm.problemDesc,
+      comments: testForm.comments
+    });
     
     setCurrentView('dashboard');
     setSelectedAssignment(null);
@@ -244,11 +226,11 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
       problemDesc: '',
       comments: ''
     });
+    
+    await onRefresh();
   };
 
   const handleStartTest = () => {
-    console.log('🔵 handleStartTest appelé');
-    
     if (chefAssignments.length === 0) {
       window.alert('Aucune assignation disponible');
       return;
@@ -256,10 +238,8 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
     
     const availableAssignments = chefAssignments.filter(a => {
       const tested = getAssignmentTests(a.id).length;
-      return tested < a.qtyAssigned;
+      return tested < a.qty_assigned;
     });
-    
-    console.log('✅ Assignations disponibles:', availableAssignments);
     
     if (availableAssignments.length === 0) {
       window.alert('Tous les dispositifs ont été testés !');
@@ -267,10 +247,8 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
     }
     
     if (availableAssignments.length > 1) {
-      console.log('📋 Affichage sélection');
       setCurrentView('deviceSelection');
     } else {
-      console.log('📝 Affichage formulaire direct');
       setSelectedAssignment(availableAssignments[0]);
       setCurrentView('testForm');
     }
@@ -281,14 +259,14 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
     setCurrentView('testForm');
   };
 
-  const handleConfirmReception = () => {
+  const handleConfirmReception = async () => {
     const assignmentIds = chefAssignments.map(a => a.id);
-    onConfirmReception(assignmentIds);
+    await onConfirmReception(assignmentIds);
+    await onRefresh();
   };
 
-  const allReceived = chefAssignments.length > 0 && chefAssignments.every(a => a.receivedConfirmedAt);
+  const allReceived = chefAssignments.length > 0 && chefAssignments.every(a => a.received_confirmed_at);
 
-  // ÉTAPE 1: Sélection campagne
   if (!selectedCampaign) {
     return (
       <div className="p-6 max-w-4xl mx-auto">
@@ -304,12 +282,12 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
         ) : (
           <div className="grid gap-4">
             {chefCampaigns.map(campaign => {
-              const campaignAssignments = assignments.filter(a => a.campaignId === campaign.id && a.chefId === chef.id);
-              const totalAssigned = campaignAssignments.reduce((sum, a) => sum + a.qtyAssigned, 0);
+              const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id && a.chef_id === chef.id);
+              const totalAssigned = campaignAssignments.reduce((sum, a) => sum + a.qty_assigned, 0);
               const totalTested = campaignAssignments.reduce((sum, a) => {
-                return sum + tests.filter(t => t.assignmentId === a.id).length;
+                return sum + tests.filter(t => t.assignment_id === a.id).length;
               }, 0);
-              const hasReceived = campaignAssignments.some(a => a.receivedConfirmedAt);
+              const hasReceived = campaignAssignments.some(a => a.received_confirmed_at);
 
               return (
                 <button
@@ -320,7 +298,7 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="text-xl font-bold text-gray-800">{campaign.name}</h3>
-                      <p className="text-sm text-gray-500">Début : {new Date(campaign.startDate).toLocaleDateString('fr-FR')}</p>
+                      <p className="text-sm text-gray-500">Début : {new Date(campaign.start_date).toLocaleDateString('fr-FR')}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
                       campaign.status === 'Actif' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
@@ -356,11 +334,10 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
     );
   }
 
-  // ÉTAPE 2: Sélection du dispositif
   if (currentView === 'deviceSelection') {
     const availableAssignments = chefAssignments.filter(a => {
       const tested = getAssignmentTests(a.id).length;
-      return tested < a.qtyAssigned;
+      return tested < a.qty_assigned;
     });
 
     return (
@@ -377,10 +354,10 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
 
         <div className="grid gap-4">
           {availableAssignments.map(assignment => {
-            const gen = generations.find(g => g.id === assignment.generationId);
+            const gen = generations.find(g => g.id === assignment.generation_id);
             const assignmentTests = getAssignmentTests(assignment.id);
             const tested = assignmentTests.length;
-            const remaining = assignment.qtyAssigned - tested;
+            const remaining = assignment.qty_assigned - tested;
 
             return (
               <button
@@ -390,7 +367,7 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
               >
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-2xl font-bold text-gray-800">{gen.name}</h3>
+                    <h3 className="text-2xl font-bold text-gray-800">{gen?.name}</h3>
                     <p className="text-gray-600 mt-1">Cliquez pour tester ce dispositif</p>
                   </div>
                   <div className="bg-blue-100 rounded-full px-4 py-2">
@@ -401,7 +378,7 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                   <div>
                     <p className="text-sm text-gray-500">Envoyés</p>
-                    <p className="text-xl font-bold">{assignment.qtyAssigned}</p>
+                    <p className="text-xl font-bold">{assignment.qty_assigned}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Testés</p>
@@ -416,16 +393,15 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
     );
   }
 
-  // ÉTAPE 3: Formulaire de test
   if (currentView === 'testForm' && selectedAssignment) {
     const assignment = selectedAssignment;
     const assignmentTests = getAssignmentTests(assignment.id);
-    const remaining = assignment.qtyAssigned - assignmentTests.length;
-    const gen = generations.find(g => g.id === assignment.generationId);
+    const remaining = assignment.qty_assigned - assignmentTests.length;
+    const gen = generations.find(g => g.id === assignment.generation_id);
 
     const availableAssignments = chefAssignments.filter(a => {
       const tested = getAssignmentTests(a.id).length;
-      return tested < a.qtyAssigned;
+      return tested < a.qty_assigned;
     });
 
     return (
@@ -443,7 +419,7 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
         <h2 className="text-2xl font-bold mb-4">Nouveau test</h2>
         <div className="bg-blue-50 p-4 rounded-lg mb-6">
           <p className="text-sm text-gray-700">
-            {gen.name} - Testés {assignmentTests.length} | Restants {remaining}
+            {gen?.name} - Testés {assignmentTests.length} | Restants {remaining}
           </p>
         </div>
 
@@ -606,7 +582,6 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
     );
   }
 
-  // ÉTAPE 4: Dashboard principal
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">
@@ -633,20 +608,20 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
           </thead>
           <tbody>
             {chefAssignments.map(assignment => {
-              const gen = generations.find(g => g.id === assignment.generationId);
+              const gen = generations.find(g => g.id === assignment.generation_id);
               const assignmentTests = getAssignmentTests(assignment.id);
               const tested = assignmentTests.length;
-              const remaining = assignment.qtyAssigned - tested;
+              const remaining = assignment.qty_assigned - tested;
 
               return (
                 <tr key={assignment.id}>
-                  <td className="px-6 py-4">{gen.name}</td>
-                  <td className="px-6 py-4">{assignment.qtyAssigned}</td>
+                  <td className="px-6 py-4">{gen?.name}</td>
+                  <td className="px-6 py-4">{assignment.qty_assigned}</td>
                   <td className="px-6 py-4">
-                    {assignment.receivedConfirmedAt ? (
+                    {assignment.received_confirmed_at ? (
                       <span className="text-green-600 font-semibold flex items-center gap-1">
                         <CheckCircle className="w-4 h-4" />
-                        Oui ({new Date(assignment.receivedConfirmedAt).toLocaleDateString('fr-FR')})
+                        Oui ({new Date(assignment.received_confirmed_at).toLocaleDateString('fr-FR')})
                       </span>
                     ) : (
                       <span className="text-gray-400">Non</span>
@@ -666,7 +641,7 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
           <div className="bg-green-50 border border-green-200 px-6 py-3 rounded-lg flex items-center gap-2 text-green-700">
             <CheckCircle className="w-5 h-5" />
             <span className="font-semibold">
-              Réception confirmée le {new Date(chefAssignments[0].receivedConfirmedAt).toLocaleDateString('fr-FR')}
+              Réception confirmée le {new Date(chefAssignments[0].received_confirmed_at).toLocaleDateString('fr-FR')}
             </span>
           </div>
         ) : (
@@ -691,13 +666,13 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
         <h3 className="text-xl font-bold mb-4">Vos tests récents</h3>
         <div className="space-y-3">
           {chefAssignments.flatMap(assignment => {
-            const gen = generations.find(g => g.id === assignment.generationId);
+            const gen = generations.find(g => g.id === assignment.generation_id);
             return getAssignmentTests(assignment.id).map(test => (
               <div key={test.id} className="bg-white rounded-lg shadow p-4">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <span className="font-semibold">{gen.name}</span>
-                    <span className="text-gray-500 ml-3">{new Date(test.testDate).toLocaleDateString('fr-FR')}</span>
+                    <span className="font-semibold">{gen?.name}</span>
+                    <span className="text-gray-500 ml-3">{new Date(test.test_date).toLocaleDateString('fr-FR')}</span>
                   </div>
                   {test.problem && (
                     <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold">
@@ -706,12 +681,12 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
                   )}
                 </div>
                 <p className="text-sm text-gray-600">
-                  {test.context} • Clip: {test.clip || 'N/A'} • Facilité {test.easeScore}/5 • Efficacité {test.efficacyScore}/5
+                  {test.context} • Clip: {test.clip || 'N/A'} • Facilité {test.ease_score}/5 • Efficacité {test.efficacy_score}/5
                 </p>
                 {test.problem && (
                   <div className="mt-3">
                     <RedAlert />
-                    <p className="text-sm mt-2"><strong>Problème:</strong> {test.problemDesc}</p>
+                    <p className="text-sm mt-2"><strong>Problème:</strong> {test.problem_desc}</p>
                   </div>
                 )}
                 {test.comments && (
@@ -726,7 +701,7 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
   );
 };
 
-// Vue Observateur HIC - Vue d'ensemble (EN ANGLAIS)
+// Vue Observateur HIC
 const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }) => {
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [filterChef, setFilterChef] = useState('all');
@@ -740,19 +715,19 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
       return;
     }
 
-    const campaignAssignments = assignments.filter(a => a.campaignId === campaign.id);
+    const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
     const campaignTests = tests.filter(t => 
-      campaignAssignments.some(a => a.id === t.assignmentId)
+      campaignAssignments.some(a => a.id === t.assignment_id)
     );
 
     let csv = 'Campaign,Chef,Generation,Test Date,Context,Clip,Ease,Efficacy,Problem,Problem Description,Comments\n';
     
     campaignTests.forEach(test => {
-      const assignment = campaignAssignments.find(a => a.id === test.assignmentId);
-      const chef = chefs.find(c => c.id === assignment.chefId);
-      const gen = generations.find(g => g.id === assignment.generationId);
+      const assignment = campaignAssignments.find(a => a.id === test.assignment_id);
+      const chef = chefs.find(c => c.id === assignment.chef_id);
+      const gen = generations.find(g => g.id === assignment.generation_id);
       
-      csv += `"${campaign.name}","${chef.name}","${gen.name}","${test.testDate}","${test.context}","${test.clip || 'N/A'}",${test.easeScore},${test.efficacyScore},${test.problem ? 'Yes' : 'No'},"${test.problemDesc || ''}","${test.comments || ''}"\n`;
+      csv += `"${campaign.name}","${chef.name}","${gen.name}","${test.test_date}","${test.context}","${test.clip || 'N/A'}",${test.ease_score},${test.efficacy_score},${test.problem ? 'Yes' : 'No'},"${test.problem_desc || ''}","${test.comments || ''}"\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -767,22 +742,22 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
     const campaign = selectedCampaign || campaigns[0];
     if (!campaign) return [];
 
-    const campaignAssignments = assignments.filter(a => a.campaignId === campaign.id);
+    const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
     let filteredTests = tests.filter(t => 
-      campaignAssignments.some(a => a.id === t.assignmentId)
+      campaignAssignments.some(a => a.id === t.assignment_id)
     );
 
     if (filterChef !== 'all') {
       filteredTests = filteredTests.filter(t => {
-        const assignment = campaignAssignments.find(a => a.id === t.assignmentId);
-        return assignment.chefId === parseInt(filterChef);
+        const assignment = campaignAssignments.find(a => a.id === t.assignment_id);
+        return assignment.chef_id === parseInt(filterChef);
       });
     }
 
     if (filterGeneration !== 'all') {
       filteredTests = filteredTests.filter(t => {
-        const assignment = campaignAssignments.find(a => a.id === t.assignmentId);
-        return assignment.generationId === parseInt(filterGeneration);
+        const assignment = campaignAssignments.find(a => a.id === t.assignment_id);
+        return assignment.generation_id === parseInt(filterGeneration);
       });
     }
 
@@ -797,19 +772,19 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
     const campaign = selectedCampaign || campaigns[0];
     if (!campaign) return null;
 
-    const campaignAssignments = assignments.filter(a => a.campaignId === campaign.id);
+    const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
     const campaignTests = tests.filter(t => 
-      campaignAssignments.some(a => a.id === t.assignmentId)
+      campaignAssignments.some(a => a.id === t.assignment_id)
     );
 
-    const totalAssigned = campaignAssignments.reduce((sum, a) => sum + a.qtyAssigned, 0);
+    const totalAssigned = campaignAssignments.reduce((sum, a) => sum + a.qty_assigned, 0);
     const totalTested = campaignTests.length;
     const problemTests = campaignTests.filter(t => t.problem).length;
     const avgEase = campaignTests.length > 0 
-      ? (campaignTests.reduce((sum, t) => sum + t.easeScore, 0) / campaignTests.length).toFixed(1)
+      ? (campaignTests.reduce((sum, t) => sum + t.ease_score, 0) / campaignTests.length).toFixed(1)
       : 0;
     const avgEfficacy = campaignTests.length > 0
-      ? (campaignTests.reduce((sum, t) => sum + t.efficacyScore, 0) / campaignTests.length).toFixed(1)
+      ? (campaignTests.reduce((sum, t) => sum + t.efficacy_score, 0) / campaignTests.length).toFixed(1)
       : 0;
 
     return {
@@ -965,34 +940,34 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
               ) : (
                 filteredTests.map(test => {
                   const campaign = selectedCampaign || campaigns[0];
-                  const campaignAssignments = assignments.filter(a => a.campaignId === campaign.id);
-                  const assignment = campaignAssignments.find(a => a.id === test.assignmentId);
-                  const chef = chefs.find(c => c.id === assignment.chefId);
-                  const gen = generations.find(g => g.id === assignment.generationId);
+                  const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
+                  const assignment = campaignAssignments.find(a => a.id === test.assignment_id);
+                  const chef = chefs.find(c => c.id === assignment.chef_id);
+                  const gen = generations.find(g => g.id === assignment.generation_id);
 
                   return (
                     <tr key={test.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">{new Date(test.testDate).toLocaleDateString('en-US')}</td>
+                      <td className="px-4 py-3">{new Date(test.test_date).toLocaleDateString('en-US')}</td>
                       <td className="px-4 py-3 font-semibold">{chef.name}</td>
                       <td className="px-4 py-3">{gen.name}</td>
                       <td className="px-4 py-3">{test.context}</td>
                       <td className="px-4 py-3 text-sm">{test.clip || 'N/A'}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded text-sm font-semibold ${
-                          test.easeScore >= 4 ? 'bg-green-100 text-green-800' :
-                          test.easeScore >= 3 ? 'bg-yellow-100 text-yellow-800' :
+                          test.ease_score >= 4 ? 'bg-green-100 text-green-800' :
+                          test.ease_score >= 3 ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {test.easeScore}/5
+                          {test.ease_score}/5
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded text-sm font-semibold ${
-                          test.efficacyScore >= 4 ? 'bg-green-100 text-green-800' :
-                          test.efficacyScore >= 3 ? 'bg-yellow-100 text-yellow-800' :
+                          test.efficacy_score >= 4 ? 'bg-green-100 text-green-800' :
+                          test.efficacy_score >= 3 ? 'bg-yellow-100 text-yellow-800' :
                           'bg-red-100 text-red-800'
                         }`}>
-                          {test.efficacyScore}/5
+                          {test.efficacy_score}/5
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -1026,10 +1001,10 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
           <div className="space-y-3">
             {filteredTests.filter(t => t.problem).map(test => {
               const campaign = selectedCampaign || campaigns[0];
-              const campaignAssignments = assignments.filter(a => a.campaignId === campaign.id);
-              const assignment = campaignAssignments.find(a => a.id === test.assignmentId);
-              const chef = chefs.find(c => c.id === assignment.chefId);
-              const gen = generations.find(g => g.id === assignment.generationId);
+              const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
+              const assignment = campaignAssignments.find(a => a.id === test.assignment_id);
+              const chef = chefs.find(c => c.id === assignment.chef_id);
+              const gen = generations.find(g => g.id === assignment.generation_id);
 
               return (
                 <div key={test.id} className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
@@ -1039,12 +1014,12 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
                       <span className="text-gray-600 mx-2">•</span>
                       <span>{gen.name}</span>
                       <span className="text-gray-600 mx-2">•</span>
-                      <span className="text-sm text-gray-600">{new Date(test.testDate).toLocaleDateString('en-US')}</span>
+                      <span className="text-sm text-gray-600">{new Date(test.test_date).toLocaleDateString('en-US')}</span>
                     </div>
                   </div>
                   <p className="text-sm mb-2"><strong>Context:</strong> {test.context}</p>
                   <p className="text-sm mb-2"><strong>Clip:</strong> {test.clip || 'N/A'}</p>
-                  <p className="text-sm"><strong>Issue:</strong> {test.problemDesc}</p>
+                  <p className="text-sm"><strong>Issue:</strong> {test.problem_desc}</p>
                   {test.comments && (
                     <p className="text-sm mt-2 text-gray-600"><strong>Comment:</strong> {test.comments}</p>
                   )}
@@ -1058,7 +1033,7 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
   );
 };
 
-// Page de gestion des chefs (Admin)
+// Gestion des chefs
 const ChefsManagement = ({ chefs, onAddChef, onDeleteChef }) => {
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -1067,8 +1042,8 @@ const ChefsManagement = ({ chefs, onAddChef, onDeleteChef }) => {
       {showAddModal && (
         <AddChefModal
           onClose={() => setShowAddModal(false)}
-          onAdd={(chef) => {
-            onAddChef(chef);
+          onAdd={async (chef) => {
+            await onAddChef(chef);
             setShowAddModal(false);
           }}
         />
@@ -1101,9 +1076,9 @@ const ChefsManagement = ({ chefs, onAddChef, onDeleteChef }) => {
                 <td className="px-6 py-4 text-gray-600">{chef.email}</td>
                 <td className="px-6 py-4">
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (window.confirm(`Supprimer ${chef.name} ?`)) {
-                        onDeleteChef(chef.id);
+                        await onDeleteChef(chef.id);
                       }
                     }}
                     className="text-red-600 hover:text-red-800 font-medium"
@@ -1125,8 +1100,9 @@ const AddChefModal = ({ onClose, onAdd }) => {
   const [name, setName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!name.trim()) {
       window.alert('Le nom complet est obligatoire');
       return;
@@ -1139,7 +1115,10 @@ const AddChefModal = ({ onClose, onAdd }) => {
       window.alert('L\'email est obligatoire');
       return;
     }
-    onAdd({ name, lastName, email });
+    
+    setIsLoading(true);
+    await onAdd({ name, lastName, email });
+    setIsLoading(false);
   };
 
   return (
@@ -1186,11 +1165,19 @@ const AddChefModal = ({ onClose, onAdd }) => {
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button onClick={onClose} className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">
+            <button 
+              onClick={onClose} 
+              className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+              disabled={isLoading}
+            >
               Annuler
             </button>
-            <button onClick={handleAdd} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-              Ajouter
+            <button 
+              onClick={handleAdd} 
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Ajout...' : 'Ajouter'}
             </button>
           </div>
         </div>
@@ -1208,8 +1195,8 @@ const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, generat
       {showNewModal && (
         <NewCampaignModal
           onClose={() => setShowNewModal(false)}
-          onCreateCampaign={(data) => {
-            onNewCampaign(data);
+          onCreateCampaign={async (data) => {
+            await onNewCampaign(data);
             setShowNewModal(false);
           }}
           generations={generations}
@@ -1255,14 +1242,14 @@ const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, generat
               {campaigns.map(campaign => (
                 <tr key={campaign.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 font-semibold">{campaign.name}</td>
-                  <td className="px-6 py-4">{new Date(campaign.startDate).toLocaleDateString('fr-FR')}</td>
+                  <td className="px-6 py-4">{new Date(campaign.start_date).toLocaleDateString('fr-FR')}</td>
                   <td className="px-6 py-4">
                     <div className="flex gap-2">
                       <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">
-                        C: {campaign.inventory[1]}
+                        C: {campaign.inventory['1'] || campaign.inventory[1]}
                       </span>
                       <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded text-xs font-semibold">
-                        S: {campaign.inventory[2]}
+                        S: {campaign.inventory['2'] || campaign.inventory[2]}
                       </span>
                     </div>
                   </td>
@@ -1296,8 +1283,8 @@ const AdminCampaignDetail = ({ campaign, assignments, chefs, generations, onBack
   const [showAssignModal, setShowAssignModal] = useState(false);
 
   const getAvailableStock = (genId) => {
-    const initial = campaign.inventory[genId] || 0;
-    const assigned = assignments.filter(a => a.generationId === genId).reduce((sum, a) => sum + a.qtyAssigned, 0);
+    const initial = campaign.inventory[genId] || campaign.inventory[genId.toString()] || 0;
+    const assigned = assignments.filter(a => a.generation_id === genId).reduce((sum, a) => sum + a.qty_assigned, 0);
     return initial - assigned;
   };
 
@@ -1310,8 +1297,8 @@ const AdminCampaignDetail = ({ campaign, assignments, chefs, generations, onBack
           generations={generations}
           getAvailableStock={getAvailableStock}
           onClose={() => setShowAssignModal(false)}
-          onCreateAssignment={(data) => {
-            onAddAssignment(data);
+          onCreateAssignment={async (data) => {
+            await onAddAssignment(data);
             setShowAssignModal(false);
           }}
         />
@@ -1332,7 +1319,7 @@ const AdminCampaignDetail = ({ campaign, assignments, chefs, generations, onBack
 
       <div className="grid grid-cols-2 gap-4 mb-6">
         {generations.map(gen => {
-          const initial = campaign.inventory[gen.id] || 0;
+          const initial = campaign.inventory[gen.id] || campaign.inventory[gen.id.toString()] || 0;
           const available = getAvailableStock(gen.id);
           const assigned = initial - available;
           const percentage = initial > 0 ? Math.round((assigned / initial) * 100) : 0;
@@ -1381,13 +1368,13 @@ const AdminCampaignDetail = ({ campaign, assignments, chefs, generations, onBack
               </tr>
             ) : (
               assignments.map(a => {
-                const chef = chefs.find(c => c.id === a.chefId);
-                const gen = generations.find(g => g.id === a.generationId);
+                const chef = chefs.find(c => c.id === a.chef_id);
+                const gen = generations.find(g => g.id === a.generation_id);
                 return (
                   <tr key={a.id} className="hover:bg-gray-50">
                     <td className="px-4 py-4 font-semibold">{chef?.name}</td>
                     <td className="px-4 py-4">{gen?.name}</td>
-                    <td className="px-4 py-4">{a.qtyAssigned}</td>
+                    <td className="px-4 py-4">{a.qty_assigned}</td>
                   </tr>
                 );
               })
@@ -1404,10 +1391,11 @@ const NewAssignmentModal = ({ campaign, chefs, generations, getAvailableStock, o
   const [chefId, setChefId] = useState('');
   const [generationId, setGenerationId] = useState('');
   const [qty, setQty] = useState(10);
+  const [isLoading, setIsLoading] = useState(false);
 
   const available = generationId ? getAvailableStock(parseInt(generationId)) : 0;
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!chefId || !generationId) {
       window.alert('Sélectionnez un chef et une génération');
       return;
@@ -1420,12 +1408,15 @@ const NewAssignmentModal = ({ campaign, chefs, generations, getAvailableStock, o
       window.alert(`Stock insuffisant ! Seulement ${available} disponibles`);
       return;
     }
-    onCreateAssignment({
-      campaignId: campaign.id,
-      chefId: parseInt(chefId),
-      generationId: parseInt(generationId),
-      qtyAssigned: qty
+    
+    setIsLoading(true);
+    await onCreateAssignment({
+      campaign_id: campaign.id,
+      chef_id: parseInt(chefId),
+      generation_id: parseInt(generationId),
+      qty_assigned: qty
     });
+    setIsLoading(false);
   };
 
   return (
@@ -1487,11 +1478,19 @@ const NewAssignmentModal = ({ campaign, chefs, generations, getAvailableStock, o
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button onClick={onClose} className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300">
+            <button 
+              onClick={onClose} 
+              className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300"
+              disabled={isLoading}
+            >
               Annuler
             </button>
-            <button onClick={handleCreate} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-              Créer
+            <button 
+              onClick={handleCreate} 
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Création...' : 'Créer'}
             </button>
           </div>
         </div>
@@ -1522,7 +1521,7 @@ const LoginScreen = ({ onLogin, chefs }) => {
         return;
       }
       const chef = chefs.find(c => c.id === parseInt(selectedChef));
-      const expectedPassword = `${chef.lastName}ATRACT`;
+      const expectedPassword = `${chef.last_name}ATRACT`;
       if (password === expectedPassword) {
         onLogin('chef', chef);
       } else {
@@ -1624,25 +1623,56 @@ const LoginScreen = ({ onLogin, chefs }) => {
 
 // Application principale
 export default function AtractApp() {
-  const [data, setData] = useState(INITIAL_DATA);
-  // 🧪 TEST SUPABASE - À SUPPRIMER APRÈS
-  React.useEffect(() => {
-    const testSupabase = async () => {
-      console.log('🔍 Test de connexion Supabase...');
-      const { data, error } = await supabase.from('generations').select('*');
-      if (error) {
-        console.error('❌ Erreur Supabase:', error);
-      } else {
-        console.log('✅ Supabase connecté ! Données:', data);
-      }
-    };
-    testSupabase();
-  }, []);
+  const [data, setData] = useState({
+    generations: [],
+    chefs: [],
+    campaigns: [],
+    assignments: [],
+    tests: []
+  });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const [currentChef, setCurrentChef] = useState(null);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [adminView, setAdminView] = useState('campaigns');
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Charger toutes les données depuis Supabase
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      
+      const [
+        { data: generations },
+        { data: chefs },
+        { data: campaigns },
+        { data: assignments },
+        { data: tests }
+      ] = await Promise.all([
+        supabase.from('generations').select('*').order('id'),
+        supabase.from('chefs').select('*').order('name'),
+        supabase.from('campaigns').select('*').order('created_at', { ascending: false }),
+        supabase.from('assignments').select('*'),
+        supabase.from('tests').select('*').order('created_at', { ascending: false })
+      ]);
+
+      setData({
+        generations: generations || [],
+        chefs: chefs || [],
+        campaigns: campaigns || [],
+        assignments: assignments || [],
+        tests: tests || []
+      });
+    } catch (error) {
+      console.error('Erreur chargement données:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const handleLogin = (role, chef) => {
     setUserRole(role);
@@ -1657,58 +1687,120 @@ export default function AtractApp() {
     setSelectedCampaign(null);
   };
 
-  const handleCreateCampaign = (campaignData) => {
-    const newCampaign = {
-      id: data.campaigns.length + 1,
-      ...campaignData
-    };
-    setData({...data, campaigns: [...data.campaigns, newCampaign]});
-    setSelectedCampaign(newCampaign);
+  const handleCreateCampaign = async (campaignData) => {
+    try {
+      const { data: newCampaign, error } = await supabase
+        .from('campaigns')
+        .insert([{
+          name: campaignData.name,
+          start_date: campaignData.startDate,
+          status: campaignData.status,
+          inventory: campaignData.inventory
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await loadData();
+      setSelectedCampaign(newCampaign);
+    } catch (error) {
+      console.error('Erreur création campagne:', error);
+      window.alert('Erreur lors de la création de la campagne');
+    }
   };
 
-  const handleAddChef = (chefData) => {
-    const newChef = {
-      id: data.chefs.length + 1,
-      lastName: chefData.lastName || chefData.name.split(' ').pop().toUpperCase(),
-      ...chefData
-    };
-    setData({...data, chefs: [...data.chefs, newChef]});
+  const handleAddChef = async (chefData) => {
+    try {
+      const { error } = await supabase
+        .from('chefs')
+        .insert([{
+          name: chefData.name,
+          last_name: chefData.lastName,
+          email: chefData.email
+        }]);
+
+      if (error) throw error;
+      await loadData();
+    } catch (error) {
+      console.error('Erreur ajout chef:', error);
+      window.alert('Erreur lors de l\'ajout du testeur');
+    }
   };
 
-  const handleDeleteChef = (chefId) => {
-    setData({
-      ...data,
-      chefs: data.chefs.filter(c => c.id !== chefId),
-      assignments: data.assignments.filter(a => a.chefId !== chefId)
-    });
+  const handleDeleteChef = async (chefId) => {
+    try {
+      const { error } = await supabase
+        .from('chefs')
+        .delete()
+        .eq('id', chefId);
+
+      if (error) throw error;
+      await loadData();
+    } catch (error) {
+      console.error('Erreur suppression chef:', error);
+      window.alert('Erreur lors de la suppression');
+    }
   };
 
-  const handleAddAssignment = (assignmentData) => {
-    const newAssignment = {
-      id: data.assignments.length + 1,
-      ...assignmentData,
-      receivedConfirmedAt: null
-    };
-    setData({...data, assignments: [...data.assignments, newAssignment]});
+  const handleAddAssignment = async (assignmentData) => {
+    try {
+      const { error } = await supabase
+        .from('assignments')
+        .insert([assignmentData]);
+
+      if (error) throw error;
+      await loadData();
+    } catch (error) {
+      console.error('Erreur ajout assignation:', error);
+      window.alert('Erreur lors de l\'ajout de l\'assignation');
+    }
   };
 
-  const handleAddTest = (test) => {
-    setData({...data, tests: [...data.tests, test]});
+  const handleAddTest = async (testData) => {
+    try {
+      const { error } = await supabase
+        .from('tests')
+        .insert([testData]);
+
+      if (error) throw error;
+      await loadData();
+    } catch (error) {
+      console.error('Erreur ajout test:', error);
+      window.alert('Erreur lors de l\'enregistrement du test');
+    }
   };
 
-  const handleConfirmReception = (assignmentIds) => {
-    const now = new Date().toISOString();
-    setData({
-      ...data,
-      assignments: data.assignments.map(a => 
-        assignmentIds.includes(a.id) ? {...a, receivedConfirmedAt: now} : a
-      )
-    });
+  const handleConfirmReception = async (assignmentIds) => {
+    try {
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('assignments')
+        .update({ received_confirmed_at: now })
+        .in('id', assignmentIds);
+
+      if (error) throw error;
+      await loadData();
+    } catch (error) {
+      console.error('Erreur confirmation réception:', error);
+      window.alert('Erreur lors de la confirmation');
+    }
   };
 
   const filteredAssignments = selectedCampaign 
-    ? data.assignments.filter(a => a.campaignId === selectedCampaign.id)
+    ? data.assignments.filter(a => a.campaign_id === selectedCampaign.id)
     : [];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Chargement...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={handleLogin} chefs={data.chefs} />;
@@ -1844,6 +1936,7 @@ export default function AtractApp() {
                   generations={data.generations}
                   onAddTest={handleAddTest}
                   onConfirmReception={handleConfirmReception}
+                  onRefresh={loadData}
                 />
               </div>
             )}
@@ -1878,6 +1971,7 @@ export default function AtractApp() {
             generations={data.generations}
             onAddTest={handleAddTest}
             onConfirmReception={handleConfirmReception}
+            onRefresh={loadData}
           />
         )}
 
