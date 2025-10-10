@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertCircle, Download, Plus, Eye, CheckCircle, XCircle, Filter, Calendar, User } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 // Données initiales
 const INITIAL_DATA = {
@@ -1624,6 +1625,19 @@ const LoginScreen = ({ onLogin, chefs }) => {
 // Application principale
 export default function AtractApp() {
   const [data, setData] = useState(INITIAL_DATA);
+  // 🧪 TEST SUPABASE - À SUPPRIMER APRÈS
+  React.useEffect(() => {
+    const testSupabase = async () => {
+      console.log('🔍 Test de connexion Supabase...');
+      const { data, error } = await supabase.from('generations').select('*');
+      if (error) {
+        console.error('❌ Erreur Supabase:', error);
+      } else {
+        console.log('✅ Supabase connecté ! Données:', data);
+      }
+    };
+    testSupabase();
+  }, []);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const [currentChef, setCurrentChef] = useState(null);
