@@ -1187,7 +1187,8 @@ const AddChefModal = ({ onClose, onAdd }) => {
 };
 
 // Liste des campagnes
-const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, generations }) => {
+// Liste des campagnes
+const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, onDeleteCampaign, generations }) => {
   const [showNewModal, setShowNewModal] = useState(false);
 
   return (
@@ -1240,7 +1241,11 @@ const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, generat
             </thead>
             <tbody className="divide-y">
               {campaigns.map(campaign => (
-                <tr key={campaign.id} className="hover:bg-gray-50">
+                <tr 
+                  key={campaign.id} 
+                  onClick={() => onSelectCampaign(campaign)}
+                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                >
                   <td className="px-6 py-4 font-semibold">{campaign.name}</td>
                   <td className="px-6 py-4">{new Date(campaign.start_date).toLocaleDateString('fr-FR')}</td>
                   <td className="px-6 py-4">
@@ -1261,12 +1266,26 @@ const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, generat
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <button
-                      onClick={() => onSelectCampaign(campaign)}
-                      className="text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Ouvrir
-                    </button>
+                    <div className="flex items-center justify-between gap-6">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectCampaign(campaign);
+                        }}
+                        className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                      >
+                        Ouvrir
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteCampaign(campaign.id, campaign.name);
+                        }}
+                        className="text-red-600 hover:text-red-800 font-medium hover:underline"
+                      >
+                        Supprimer
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1709,7 +1728,35 @@ export default function AtractApp() {
       window.alert('Erreur lors de la création de la campagne');
     }
   };
+  const handleDeleteCampaign = async (campaignId, campaignName) => {
+    const confirmation = window.confirm(
+      `Êtes-vous sûr de vouloir supprimer la campagne "${campaignName}" ?\n\n` +
+      `⚠️ ATTENTION : Cette action est DÉFINITIVE !\n\n` +
+      `Toutes les assignations et tests associés seront également supprimés.`
+    );
 
+    if (!confirmation) return;
+
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .delete()
+        .eq('id', campaignId);
+
+      if (error) throw error;
+
+      window.alert('✅ Campagne supprimée avec succès');
+      await loadData();
+      
+      // Si la campagne supprimée était sélectionnée, on désélectionne
+      if (selectedCampaign?.id === campaignId) {
+        setSelectedCampaign(null);
+      }
+    } catch (error) {
+      console.error('Erreur suppression campagne:', error);
+      window.alert('❌ Erreur lors de la suppression de la campagne');
+    }
+  };
   const handleAddChef = async (chefData) => {
     try {
       const { error } = await supabase
@@ -1884,10 +1931,10 @@ export default function AtractApp() {
                 campaigns={data.campaigns}
                 onSelectCampaign={setSelectedCampaign}
                 onNewCampaign={handleCreateCampaign}
+                onDeleteCampaign={handleDeleteCampaign}
                 generations={data.generations}
               />
             )}
-
             {adminView === 'campaigns' && selectedCampaign && (
               <AdminCampaignDetail
                 campaign={selectedCampaign}
