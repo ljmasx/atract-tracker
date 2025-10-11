@@ -703,61 +703,68 @@ const ChefDashboard = ({ chef, campaigns, assignments, tests, generations, onAdd
 
 // Vue Observateur HIC
 const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }) => {
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [selectedCampaign, setSelectedCampaign] = useState('all'); // Changé de null à 'all'
   const [filterChef, setFilterChef] = useState('all');
   const [filterGeneration, setFilterGeneration] = useState('all');
   const [showProblemsOnly, setShowProblemsOnly] = useState(false);
 
   const handleExport = () => {
-    const campaign = selectedCampaign || campaigns[0];
-    if (!campaign) {
+    const campaignsToExport = selectedCampaign === 'all' ? campaigns : [campaigns.find(c => c.id === parseInt(selectedCampaign))];
+    
+    if (!campaignsToExport || campaignsToExport.length === 0) {
       window.alert('No campaign available');
       return;
     }
 
-    const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
-    const campaignTests = tests.filter(t => 
-      campaignAssignments.some(a => a.id === t.assignment_id)
-    );
-
     let csv = 'Campaign,Chef,Generation,Test Date,Context,Clip,Ease,Efficacy,Problem,Problem Description,Comments\n';
     
-    campaignTests.forEach(test => {
-      const assignment = campaignAssignments.find(a => a.id === test.assignment_id);
-      const chef = chefs.find(c => c.id === assignment.chef_id);
-      const gen = generations.find(g => g.id === assignment.generation_id);
-      
-      csv += `"${campaign.name}","${chef.name}","${gen.name}","${test.test_date}","${test.context}","${test.clip || 'N/A'}",${test.ease_score},${test.efficacy_score},${test.problem ? 'Yes' : 'No'},"${test.problem_desc || ''}","${test.comments || ''}"\n`;
+    campaignsToExport.forEach(campaign => {
+      const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
+      const campaignTests = tests.filter(t => 
+        campaignAssignments.some(a => a.id === t.assignment_id)
+      );
+
+      campaignTests.forEach(test => {
+        const assignment = campaignAssignments.find(a => a.id === test.assignment_id);
+        const chef = chefs.find(c => c.id === assignment.chef_id);
+        const gen = generations.find(g => g.id === assignment.generation_id);
+        
+        csv += `"${campaign.name}","${chef.name}","${gen.name}","${test.test_date}","${test.context}","${test.clip || 'N/A'}",${test.ease_score},${test.efficacy_score},${test.problem ? 'Yes' : 'No'},"${test.problem_desc || ''}","${test.comments || ''}"\n`;
+      });
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `export_${campaign.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = selectedCampaign === 'all' 
+      ? `export_all_campaigns_${new Date().toISOString().split('T')[0]}.csv`
+      : `export_${campaigns.find(c => c.id === parseInt(selectedCampaign)).name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = filename;
     a.click();
   };
 
   const getFilteredTests = () => {
-    const campaign = selectedCampaign || campaigns[0];
-    if (!campaign) return [];
+    // Si "Toutes les campagnes", on prend tous les assignments
+    const relevantAssignments = selectedCampaign === 'all' 
+      ? assignments 
+      : assignments.filter(a => a.campaign_id === parseInt(selectedCampaign));
 
-    const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
     let filteredTests = tests.filter(t => 
-      campaignAssignments.some(a => a.id === t.assignment_id)
+      relevantAssignments.some(a => a.id === t.assignment_id)
     );
 
     if (filterChef !== 'all') {
       filteredTests = filteredTests.filter(t => {
-        const assignment = campaignAssignments.find(a => a.id === t.assignment_id);
-        return assignment.chef_id === parseInt(filterChef);
+        const assignment = relevantAssignments.find(a => a.id === t.assignment_id);
+        return assignment?.chef_id === parseInt(filterChef);
       });
     }
 
     if (filterGeneration !== 'all') {
       filteredTests = filteredTests.filter(t => {
-        const assignment = campaignAssignments.find(a => a.id === t.assignment_id);
-        return assignment.generation_id === parseInt(filterGeneration);
+        const assignment = relevantAssignments.find(a => a.id === t.assignment_id);
+        return assignment?.generation_id === parseInt(filterGeneration);
       });
     }
 
@@ -769,22 +776,23 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
   };
 
   const getStats = () => {
-    const campaign = selectedCampaign || campaigns[0];
-    if (!campaign) return null;
+    // Si "Toutes les campagnes"
+    const relevantAssignments = selectedCampaign === 'all'
+      ? assignments
+      : assignments.filter(a => a.campaign_id === parseInt(selectedCampaign));
 
-    const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
-    const campaignTests = tests.filter(t => 
-      campaignAssignments.some(a => a.id === t.assignment_id)
+    const relevantTests = tests.filter(t => 
+      relevantAssignments.some(a => a.id === t.assignment_id)
     );
 
-    const totalAssigned = campaignAssignments.reduce((sum, a) => sum + a.qty_assigned, 0);
-    const totalTested = campaignTests.length;
-    const problemTests = campaignTests.filter(t => t.problem).length;
-    const avgEase = campaignTests.length > 0 
-      ? (campaignTests.reduce((sum, t) => sum + t.ease_score, 0) / campaignTests.length).toFixed(1)
+    const totalAssigned = relevantAssignments.reduce((sum, a) => sum + a.qty_assigned, 0);
+    const totalTested = relevantTests.length;
+    const problemTests = relevantTests.filter(t => t.problem).length;
+    const avgEase = relevantTests.length > 0 
+      ? (relevantTests.reduce((sum, t) => sum + t.ease_score, 0) / relevantTests.length).toFixed(1)
       : 0;
-    const avgEfficacy = campaignTests.length > 0
-      ? (campaignTests.reduce((sum, t) => sum + t.efficacy_score, 0) / campaignTests.length).toFixed(1)
+    const avgEfficacy = relevantTests.length > 0
+      ? (relevantTests.reduce((sum, t) => sum + t.efficacy_score, 0) / relevantTests.length).toFixed(1)
       : 0;
 
     return {
@@ -830,10 +838,11 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
       <div className="mb-6">
         <label className="block text-sm font-semibold mb-2">Campaign</label>
         <select
-          value={selectedCampaign?.id || campaigns[0]?.id}
-          onChange={(e) => setSelectedCampaign(campaigns.find(c => c.id === parseInt(e.target.value)))}
+          value={selectedCampaign}
+          onChange={(e) => setSelectedCampaign(e.target.value)}
           className="border-2 rounded-lg px-4 py-2"
         >
+          <option value="all">📊 Toutes les campagnes</option>
           {campaigns.map(c => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
@@ -939,17 +948,19 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
                 </tr>
               ) : (
                 filteredTests.map(test => {
-                  const campaign = selectedCampaign || campaigns[0];
-                  const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
-                  const assignment = campaignAssignments.find(a => a.id === test.assignment_id);
-                  const chef = chefs.find(c => c.id === assignment.chef_id);
-                  const gen = generations.find(g => g.id === assignment.generation_id);
+                  const relevantAssignments = selectedCampaign === 'all'
+                    ? assignments
+                    : assignments.filter(a => a.campaign_id === parseInt(selectedCampaign));
+                  
+                  const assignment = relevantAssignments.find(a => a.id === test.assignment_id);
+                  const chef = chefs.find(c => c.id === assignment?.chef_id);
+                  const gen = generations.find(g => g.id === assignment?.generation_id);
 
                   return (
                     <tr key={test.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">{new Date(test.test_date).toLocaleDateString('en-US')}</td>
-                      <td className="px-4 py-3 font-semibold">{chef.name}</td>
-                      <td className="px-4 py-3">{gen.name}</td>
+                      <td className="px-4 py-3 font-semibold">{chef?.name}</td>
+                      <td className="px-4 py-3">{gen?.name}</td>
                       <td className="px-4 py-3">{test.context}</td>
                       <td className="px-4 py-3 text-sm">{test.clip || 'N/A'}</td>
                       <td className="px-4 py-3">
@@ -1000,19 +1011,21 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
           </h3>
           <div className="space-y-3">
             {filteredTests.filter(t => t.problem).map(test => {
-              const campaign = selectedCampaign || campaigns[0];
-              const campaignAssignments = assignments.filter(a => a.campaign_id === campaign.id);
-              const assignment = campaignAssignments.find(a => a.id === test.assignment_id);
-              const chef = chefs.find(c => c.id === assignment.chef_id);
-              const gen = generations.find(g => g.id === assignment.generation_id);
+              const relevantAssignments = selectedCampaign === 'all'
+                ? assignments
+                : assignments.filter(a => a.campaign_id === parseInt(selectedCampaign));
+              
+              const assignment = relevantAssignments.find(a => a.id === test.assignment_id);
+              const chef = chefs.find(c => c.id === assignment?.chef_id);
+              const gen = generations.find(g => g.id === assignment?.generation_id);
 
               return (
                 <div key={test.id} className="bg-red-50 border-2 border-red-200 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="font-bold">{chef.name}</span>
+                      <span className="font-bold">{chef?.name}</span>
                       <span className="text-gray-600 mx-2">•</span>
-                      <span>{gen.name}</span>
+                      <span>{gen?.name}</span>
                       <span className="text-gray-600 mx-2">•</span>
                       <span className="text-sm text-gray-600">{new Date(test.test_date).toLocaleDateString('en-US')}</span>
                     </div>
@@ -1032,7 +1045,6 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
     </div>
   );
 };
-
 // Gestion des chefs
 const ChefsManagement = ({ chefs, onAddChef, onDeleteChef }) => {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -1601,7 +1613,9 @@ const LoginScreen = ({ onLogin, chefs }) => {
               >
                 <option value="">Choisissez...</option>
                 {chefs.map(chef => (
-                  <option key={chef.id} value={chef.id}>{chef.name}</option>
+                  <option key={chef.id} value={chef.id}>
+                  {chef.name.split(' ')[0]}
+                </option>
                 ))}
               </select>
             </div>
