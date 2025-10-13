@@ -719,6 +719,15 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
   const [filterChef, setFilterChef] = useState('all');
   const [filterGeneration, setFilterGeneration] = useState('all');
   const [showProblemsOnly, setShowProblemsOnly] = useState(false);
+  const [expandedTestId, setExpandedTestId] = useState(null);
+
+  // 🐛 LOGS DE DÉBOGAGE - AJOUTEZ CES LIGNES
+  console.log('=== DÉBOGAGE HIC DASHBOARD ===');
+  console.log('Total tests:', tests.length);
+  console.log('Total assignments:', assignments.length);
+  console.log('Total chefs:', chefs.length);
+  console.log('Total generations:', generations.length);
+  console.log('Campaign sélectionnée:', selectedCampaign?.name || campaigns[0]?.name);
 
   const handleExport = () => {
     const campaignsToExport = selectedCampaign === 'all' ? campaigns : [campaigns.find(c => c.id === parseInt(selectedCampaign))];
@@ -819,6 +828,10 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
 
   const filteredTests = getFilteredTests();
   const stats = getStats();
+
+  // 🐛 LOGS DE DÉBOGAGE - AJOUTEZ CES LIGNES
+console.log('Filtered tests:', filteredTests.length);
+console.log('Détails filtered tests:', filteredTests);
 
   if (campaigns.length === 0) {
     return (
@@ -960,53 +973,155 @@ const ObserverDashboard = ({ campaigns, assignments, tests, chefs, generations }
                 </tr>
               ) : (
                 filteredTests.map(test => {
-                  const relevantAssignments = selectedCampaign === 'all'
-                    ? assignments
-                    : assignments.filter(a => a.campaign_id === parseInt(selectedCampaign));
+                   // 👇 INSÉREZ CES LIGNES ICI 👇
+                  console.log('🔵 Processing test:', test.id);
+                  console.log('  → Test complet:', test);
+                  // 👆 FIN DE L'INSERTION 👆
+
+                  const campaign = selectedCampaign || campaigns[0];
+                  const assignment = assignments.find(a => a.id === test.assignment_id);
+                  console.log('  → assignment_id du test:', test.assignment_id);
+                  console.log('  → Assignment trouvée?', assignment ? 'OUI ✅' : 'NON ❌');
+                  if (assignment) {
+                    console.log('  → Assignment complète:', assignment);
+                  };
                   
-                  const assignment = relevantAssignments.find(a => a.id === test.assignment_id);
+                  // 👇 INSÉREZ CES LIGNES ICI 👇
+                  console.log('  → assignment_id du test:', test.assignment_id);
+                  console.log('  → Assignment trouvée?', assignment ? 'OUI ✅' : 'NON ❌');
+                  if (assignment) {
+                    console.log('  → Assignment complète:', assignment);
+                  }
+                  // 👆 FIN DE L'INSERTION 👆
+                  
+                  // Protection : si pas d'assignment, on skip
+                  if (!assignment) {
+                    console.warn('Test sans assignment:', test.id);
+                    return null;
+                  }
+                  
                   const chef = chefs.find(c => c.id === assignment?.chef_id);
                   const gen = generations.find(g => g.id === assignment?.generation_id);
+                  
+                  // Protection : si pas de chef ou génération, on skip
+                  if (!chef || !gen) {
+                    console.warn('Test sans chef ou génération:', test.id);
+                    return null;
+                  }
+                  
+                  const isExpanded = expandedTestId === test.id;
 
                   return (
-                    <tr key={test.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">{new Date(test.test_date).toLocaleDateString('en-US')}</td>
-                      <td className="px-4 py-3 font-semibold">{chef?.name}</td>
-                      <td className="px-4 py-3">{gen?.name}</td>
-                      <td className="px-4 py-3">{test.context}</td>
-                      <td className="px-4 py-3 text-sm">{test.clip || 'N/A'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded text-sm font-semibold ${
-                          test.ease_score >= 4 ? 'bg-green-100 text-green-800' :
-                          test.ease_score >= 3 ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {test.ease_score}/5
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded text-sm font-semibold ${
-                          test.efficacy_score >= 4 ? 'bg-green-100 text-green-800' :
-                          test.efficacy_score >= 3 ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {test.efficacy_score}/5
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {test.problem ? (
-                          <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1 w-fit">
-                            <XCircle className="w-4 h-4" />
-                            Issue
+                    <React.Fragment key={test.id}>
+                      {/* Ligne principale */}
+                      <tr 
+                        onClick={() => setExpandedTestId(isExpanded ? null : test.id)}
+                        className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-3">{new Date(test.test_date).toLocaleDateString('en-US')}</td>
+                        <td className="px-4 py-3 font-semibold">{chef.name}</td>
+                        <td className="px-4 py-3">{gen.name}</td>
+                        <td className="px-4 py-3">{test.context}</td>
+                        <td className="px-4 py-3 text-sm">{test.clip || 'N/A'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-sm font-semibold ${
+                            test.ease_score >= 4 ? 'bg-green-100 text-green-800' :
+                            test.ease_score >= 3 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {test.ease_score}/5
                           </span>
-                        ) : (
-                          <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1 w-fit">
-                            <CheckCircle className="w-4 h-4" />
-                            OK
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-sm font-semibold ${
+                            test.efficacy_score >= 4 ? 'bg-green-100 text-green-800' :
+                            test.efficacy_score >= 3 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            {test.efficacy_score}/5
                           </span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {test.problem ? (
+                              <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
+                                <XCircle className="w-4 h-4" />
+                                Issue
+                              </span>
+                            ) : (
+                              <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
+                                <CheckCircle className="w-4 h-4" />
+                                OK
+                              </span>
+                            )}
+                            {(test.comments || test.problem_desc) && (
+                              <Eye className="w-4 h-4 text-gray-400" />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Ligne de détails expansible */}
+                      {isExpanded && (
+                        <tr className="bg-blue-50">
+                          <td colSpan="8" className="px-4 py-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <div>
+                                  <span className="font-semibold text-gray-700">Date:</span>
+                                  <span className="ml-2 text-gray-600">{new Date(test.test_date).toLocaleDateString('en-US')}</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-700">Chef:</span>
+                                  <span className="ml-2 text-gray-600">{chef.name}</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-700">Generation:</span>
+                                  <span className="ml-2 text-gray-600">{gen.name}</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-700">Context:</span>
+                                  <span className="ml-2 text-gray-600">{test.context}</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-700">Clip:</span>
+                                  <span className="ml-2 text-gray-600">{test.clip || 'N/A'}</span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <div>
+                                  <span className="font-semibold text-gray-700">Ease Score:</span>
+                                  <span className="ml-2 text-gray-600">{test.ease_score}/5</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-700">Efficacy Score:</span>
+                                  <span className="ml-2 text-gray-600">{test.efficacy_score}/5</span>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-gray-700">Problem:</span>
+                                  <span className="ml-2 text-gray-600">{test.problem ? 'Yes' : 'No'}</span>
+                                </div>
+                              </div>
+
+                              {test.problem_desc && (
+                                <div className="col-span-2 mt-2 p-3 bg-red-50 border border-red-200 rounded">
+                                  <p className="font-semibold text-red-800 mb-1">⚠️ Problem Description:</p>
+                                  <p className="text-gray-700">{test.problem_desc}</p>
+                                </div>
+                              )}
+
+                              {test.comments && (
+                                <div className="col-span-2 mt-2 p-3 bg-white border border-gray-200 rounded">
+                                  <p className="font-semibold text-gray-800 mb-1">💬 Comments:</p>
+                                  <p className="text-gray-700 italic">{test.comments}</p>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}
