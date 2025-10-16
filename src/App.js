@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Download, Plus, Eye, CheckCircle, XCircle, Filter, Calendar, User } from 'lucide-react';
+import { AlertCircle, Download, Plus, Eye, CheckCircle, XCircle, Filter, Calendar, User, Edit } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { useSupabaseData } from './hooks/useSupabaseData';
 import { ADMIN_PASSWORD, HIC_PASSWORD, ROLES, CAMPAIGN_STATUS, TEST_CONTEXTS, CLIP_TYPES } from './utils/constants';
 import { exportTestsToCSV } from './utils/csvExport';
 import RedAlert from './components/RedAlert';
 import NewCampaignModal from './components/NewCampaignModal';
+import EditCampaignModal from './components/EditCampaignModal';
 import AddChefModal from './components/AddChefModal';
 import NewAssignmentModal from './components/NewAssignmentModal';
 import ChefStats from './components/ChefStats';
@@ -1103,8 +1104,9 @@ const ChefsManagement = ({ chefs, onAddChef, onDeleteChef }) => {
 
 // Liste des campagnes
 // Liste des campagnes
-const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, onDeleteCampaign, generations }) => {
+const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, onDeleteCampaign, onUpdateCampaign, generations }) => {
   const [showNewModal, setShowNewModal] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState(null);
 
   return (
     <div className="p-6">
@@ -1114,6 +1116,18 @@ const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, onDelet
           onCreateCampaign={async (data) => {
             await onNewCampaign(data);
             setShowNewModal(false);
+          }}
+          generations={generations}
+        />
+      )}
+
+      {editingCampaign && (
+        <EditCampaignModal
+          campaign={editingCampaign}
+          onClose={() => setEditingCampaign(null)}
+          onUpdateCampaign={async (id, data) => {
+            await onUpdateCampaign(id, data);
+            setEditingCampaign(null);
           }}
           generations={generations}
         />
@@ -1181,7 +1195,7 @@ const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, onDelet
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center justify-between gap-6">
+                    <div className="flex items-center justify-between gap-4">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1190,6 +1204,16 @@ const AdminCampaignList = ({ campaigns, onSelectCampaign, onNewCampaign, onDelet
                         className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
                       >
                         Ouvrir
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCampaign(campaign);
+                        }}
+                        className="text-green-600 hover:text-green-800 font-medium hover:underline flex items-center gap-1"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Éditer
                       </button>
                       <button
                         onClick={(e) => {
@@ -1534,6 +1558,32 @@ export default function AtractApp() {
       window.alert('Erreur lors de la création de la campagne');
     }
   };
+  const handleUpdateCampaign = async (campaignId, campaignData) => {
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({
+          name: campaignData.name,
+          inventory: campaignData.inventory
+        })
+        .eq('id', campaignId);
+
+      if (error) throw error;
+
+      window.alert('✅ Campagne mise à jour avec succès');
+      await loadData();
+
+      // Mettre à jour la campagne sélectionnée si c'est celle qui a été modifiée
+      if (selectedCampaign?.id === campaignId) {
+        const updatedCampaign = data.campaigns.find(c => c.id === campaignId);
+        setSelectedCampaign(updatedCampaign);
+      }
+    } catch (error) {
+      console.error('Erreur mise à jour campagne:', error);
+      window.alert('❌ Erreur lors de la mise à jour de la campagne');
+    }
+  };
+
   const handleDeleteCampaign = async (campaignId, campaignName) => {
     const confirmation = window.confirm(
       `Êtes-vous sûr de vouloir supprimer la campagne "${campaignName}" ?\n\n` +
@@ -1553,7 +1603,7 @@ export default function AtractApp() {
 
       window.alert('✅ Campagne supprimée avec succès');
       await loadData();
-      
+
       // Si la campagne supprimée était sélectionnée, on désélectionne
       if (selectedCampaign?.id === campaignId) {
         setSelectedCampaign(null);
@@ -1737,6 +1787,7 @@ export default function AtractApp() {
                 campaigns={data.campaigns}
                 onSelectCampaign={setSelectedCampaign}
                 onNewCampaign={handleCreateCampaign}
+                onUpdateCampaign={handleUpdateCampaign}
                 onDeleteCampaign={handleDeleteCampaign}
                 generations={data.generations}
               />
